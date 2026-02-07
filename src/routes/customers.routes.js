@@ -1,4 +1,6 @@
-router.use(authenticate, checkSubscription);
-
-router.get("/", customersController.getCustomers);
-router.post("/", customersController.createCustomer);
+router.post(
+  "/quick-add",
+  authenticate,
+  checkSubscription,
+  customersController.quickAddCustomer,
+);

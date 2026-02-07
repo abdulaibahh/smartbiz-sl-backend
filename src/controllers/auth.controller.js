@@ -2,82 +2,75 @@ const pool = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-/* ==============================
-   SIGNUP (OWNER)
-============================== */
 exports.signup = async (req, res) => {
   const { full_name, email, password, business_name, address } = req.body;
 
+  const client = await pool.connect();
+
   try {
-    /* ------------------------------
-       1️⃣ Check email uniqueness
-    ------------------------------- */
-    const emailCheck = await pool.query(
-      "SELECT 1 FROM users WHERE email = $1",
-      [email],
-    );
+    await client.query("BEGIN");
 
-    if (emailCheck.rowCount > 0) {
-      return res.status(400).json({ message: "Email already registered" });
-    }
-
-    /* ------------------------------
-       2️⃣ Hash password
-    ------------------------------- */
+    // 1. Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    /* ------------------------------
-       3️⃣ Create owner user
-    ------------------------------- */
-    const userResult = await pool.query(
-      `INSERT INTO users (full_name, email, password_hash, role)
-       VALUES ($1, $2, $3, 'owner')
-       RETURNING id`,
+    // 2. Create owner user
+    const userResult = await client.query(
+      `
+      INSERT INTO users (full_name, email, password_hash, role)
+      VALUES ($1, $2, $3, 'owner')
+      RETURNING id
+      `,
       [full_name, email, hashedPassword],
     );
 
     const ownerId = userResult.rows[0].id;
 
-    /* ------------------------------
-       4️⃣ Create business
-    ------------------------------- */
-    const businessResult = await pool.query(
-      `INSERT INTO businesses (owner_id, name, address)
-       VALUES ($1, $2, $3)
-       RETURNING id`,
+    // 3. Create business
+    const businessResult = await client.query(
+      `
+      INSERT INTO businesses (owner_id, name, address)
+      VALUES ($1, $2, $3)
+      RETURNING id
+      `,
       [ownerId, business_name, address],
     );
 
     const businessId = businessResult.rows[0].id;
 
-    /* ------------------------------
-       5️⃣ Attach business to owner
-    ------------------------------- */
-    await pool.query(`UPDATE users SET business_id = $1 WHERE id = $2`, [
-      businessId,
-      ownerId,
-    ]);
+    // 4. Attach business to owner
+    await client.query(
+      `
+      UPDATE users
+      SET business_id = $1
+      WHERE id = $2
+      `,
+      [businessId, ownerId],
+    );
 
-    /* ------------------------------
-       6️⃣ Create trial subscription
-    ------------------------------- */
-    await pool.query(
-      `INSERT INTO subscriptions
-       (business_id, plan, amount, starts_at, ends_at, verified)
-       VALUES (
-         $1,
-         'trial',
-         0,
-         CURRENT_TIMESTAMP,
-         CURRENT_TIMESTAMP + INTERVAL '30 days',
-         TRUE
-       )`,
+    // 5. ✅ CREATE TRIAL SUBSCRIPTION (OPTION A)
+    await client.query(
+      `
+      INSERT INTO subscriptions (
+        business_id,
+        plan,
+        verified,
+        starts_at,
+        ends_at
+      )
+      VALUES (
+        $1,
+        'trial',
+        true,
+        NOW(),
+        NOW() + INTERVAL '14 days'
+      )
+      `,
       [businessId],
     );
 
-    /* ------------------------------
-       7️⃣ Generate JWT
-    ------------------------------- */
+    await client.query("COMMIT");
+
+    // 6. Issue JWT
     const token = jwt.sign(
       {
         userId: ownerId,
@@ -93,22 +86,24 @@ exports.signup = async (req, res) => {
       token,
     });
   } catch (error) {
+    await client.query("ROLLBACK");
     console.error("Signup error:", error);
     res.status(500).json({ message: "Signup failed" });
+  } finally {
+    client.release();
   }
 };
 
-/* ==============================
-   LOGIN
-============================== */
 exports.login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
     const result = await pool.query(
-      `SELECT id, password_hash, role, business_id
-       FROM users
-       WHERE email = $1 AND is_active = TRUE`,
+      `
+      SELECT id, password_hash, role, business_id
+      FROM users
+      WHERE email = $1 AND is_active = TRUE
+      `,
       [email],
     );
 
@@ -118,9 +113,8 @@ exports.login = async (req, res) => {
 
     const user = result.rows[0];
 
-    const passwordMatch = await bcrypt.compare(password, user.password_hash);
-
-    if (!passwordMatch) {
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 

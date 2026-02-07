@@ -1,26 +1,53 @@
-exports.quickAddCustomer = async (req, res) => {
-  const { businessId } = req.user;
-  const { full_name, phone, email } = req.body;
+const pool = require("../config/db");
 
-  if (!full_name || full_name.trim() === "") {
-    return res.status(400).json({ message: "Customer name is required" });
-  }
-
+/**
+ * GET /api/customers
+ */
+exports.getCustomers = async (req, res, next) => {
   try {
-    const result = await req.pool.query(
-      `INSERT INTO customers
-       (business_id, full_name, phone, email, balance)
-       VALUES ($1, $2, $3, $4, 0)
-       RETURNING id, full_name, phone, balance`,
-      [businessId, full_name.trim(), phone || null, email || null],
+    const { businessId } = req.user;
+
+    const result = await pool.query(
+      `
+      SELECT id, name, phone, email, created_at
+      FROM customers
+      WHERE business_id = $1
+      ORDER BY created_at DESC
+      `,
+      [businessId],
     );
 
-    res.status(201).json({
-      message: "Customer added successfully",
-      customer: result.rows[0],
-    });
+    res.json(result.rows);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Failed to add customer" });
+    console.error("Get customers error:", error);
+    next(error);
+  }
+};
+
+/**
+ * POST /api/customers
+ */
+exports.createCustomer = async (req, res, next) => {
+  try {
+    const { businessId } = req.user;
+    const { name, phone, email } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ message: "Customer name is required" });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO customers (business_id, name, phone, email)
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+      `,
+      [businessId, name, phone || null, email || null],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error("Create customer error:", error);
+    next(error);
   }
 };

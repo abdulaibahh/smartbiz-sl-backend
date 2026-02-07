@@ -6,8 +6,7 @@ const authRoutes = require("./routes/auth.routes");
 const salesRoutes = require("./routes/sales.routes");
 const paymentsRoutes = require("./routes/payments.routes");
 const customersRoutes = require("./routes/customers.routes");
-const { authenticate } = require("./middlewares/auth.middleware");
-const { checkSubscription } = require("./middlewares/subscription.middleware");
+
 const { errorHandler } = require("./middlewares/error.middleware");
 
 const app = express();
@@ -26,10 +25,10 @@ app.use("/api/auth", authRoutes);
 /* ======================
    PROTECTED ROUTES
 ====================== */
-// app.use("/api", authenticate, checkSubscription);
 app.use("/api/sales", salesRoutes);
 app.use("/api/payments", paymentsRoutes);
 app.use("/api/customers", customersRoutes);
+
 /* ======================
    HEALTH CHECK
 ====================== */

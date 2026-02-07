@@ -26,7 +26,7 @@ app.use("/api/auth", authRoutes);
 /* ======================
    PROTECTED ROUTES
 ====================== */
-app.use("/api", authenticate, checkSubscription);
+// app.use("/api", authenticate, checkSubscription);
 app.use("/api/sales", salesRoutes);
 app.use("/api/payments", paymentsRoutes);
 
